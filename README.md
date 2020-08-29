@@ -1,8 +1,8 @@
-### face_arec
+### face_rec
 ***this is a project for face recognization***  
 I split lfw dataset into two parts, first part for training and second part for test.
 and I get 99.09% accuracy on the test part.
-#### roc curve
+#### roc curve  
 ![roc](https://github.com/sunnythree/face_rec/tree/maste/data/roc.png)
 
 #### train  
