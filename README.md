@@ -11,6 +11,6 @@ if you want train from last time, just add -p True
 ```
 python3.6 Train.py -b 100 -l 0.001 -e 2000 -s 500  -P true
 ```
-#### test on  eval dataset
+#### evaluate 
 ```
-python3.6 TestHard.py
+python3.6 Evaluate.py
