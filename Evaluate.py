@@ -142,6 +142,7 @@ def test():
     generate_roc_curve(fpr, tpr, "data/roc.png")
     print('Model accuracy is {}'.format(accuracy))
     print('ROC curve generated at data/')
+    print("best_thresholds is "+str(best_thresholds))
 
 if __name__ == '__main__':
     test()
