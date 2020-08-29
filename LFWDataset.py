@@ -5,7 +5,8 @@ import os
 import math
 import Config as cfg
 import cv2
-
+import numpy as np
+from torchvision import transforms
 
 def create_datasets(dataroot, train_val_split=0.9, is_train=True):
     if not os.path.isdir(dataroot):
@@ -40,9 +41,12 @@ class LFWDataset(Dataset):
     def __init__(self, dataset_dir, transform=None, target_transform=None, is_train=True):
         datasets, num_classes = create_datasets(dataset_dir, train_val_split=0.9, is_train=is_train)
         self.datasets = datasets
-        self.num_classes = len(datasets)
+        self.num_classes = num_classes
         self.transform = transform
         self.target_transform = target_transform
+
+    def get_num_classes(self):
+        return self.num_classes
 
     def __len__(self):
         return len(self.datasets)
@@ -51,7 +55,7 @@ class LFWDataset(Dataset):
         image = image_loader(self.datasets[index][0])
         if self.transform:
             image = self.transform(image)
-        return (image, self.datasets[index][1], self.datasets[index][2])
+        return image, self.datasets[index][1], self.datasets[index][2]
 
 
 class DataPrefetcher():
@@ -62,7 +66,7 @@ class DataPrefetcher():
 
     def preload(self):
         try:
-            self.next_input, self.next_target = next(self.loader)
+            self.next_input, self.next_target, self.next_name = next(self.loader)
         except StopIteration:
             self.next_input = None
             self.next_target = None
