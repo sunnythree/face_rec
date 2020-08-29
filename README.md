@@ -1,7 +1,7 @@
 ### face_arec
 ***this is a project for face recognization***  
 I split lfw dataset into two parts, first part for training and second part for test.
-and I get 98.14% accuracy on the test part.
+and I get 99.09% accuracy on the test part.
 
 #### train  
 ```

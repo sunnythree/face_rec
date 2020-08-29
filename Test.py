@@ -27,7 +27,7 @@ def test():
     data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=True, num_workers=1)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
-    model = Resnet18FaceModel()
+    model = FaceNet()
     state = torch.load(MODEL_FACE_ALIGN)
     model.load_state_dict(state['net'])
     model.to(device)

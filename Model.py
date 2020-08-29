@@ -79,6 +79,7 @@ class CnnBlock(nn.Module):
 
 class FaceNet(nn.Module):
     IMAGE_SHAPE = (96, 128)
+    FEATURE_DIM = 512
 
     def __init__(self):
         super(FaceNet, self).__init__()
@@ -87,7 +88,7 @@ class FaceNet(nn.Module):
         self.cnn3 = BasicBlock(64, 128)
         self.cnn4 = BasicBlock(128, 256)
         self.cnn5 = BasicBlock(256, 512)
-        self.cnn6 = nn.Conv2d(512, 1024, kernel_size=1, padding=0)
+        self.cnn6 = nn.Conv2d(512, 512, kernel_size=1, padding=0)
         self.max_pool = nn.MaxPool2d(2, stride=2)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
 
@@ -102,8 +103,8 @@ class FaceNet(nn.Module):
         x8 = self.max_pool(x7)  # 5*7*256
         x9 = self.cnn5(x8)  # 3*5*512
         x10 = self.avg_pool(x9)  # 1*1*512
-        x11 = self.cnn6(x10)  # 1*1*1024
-        return x11.view(-1, 1024)
+        x11 = self.cnn6(x10)  # 1*1*512
+        return x11.view(-1, 512)
 
 
 class ResnetFaceModel(nn.Module):

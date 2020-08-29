@@ -39,7 +39,7 @@ def train(args):
     data_loader = DataLoader(dataset, batch_size=args.batch, shuffle=True, num_workers=16, drop_last=True)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
-    model = Resnet18FaceModel()
+    model = FaceNet()
     print("add graph")
     writer.add_graph(model, torch.zeros((1, 3, 96, 128)))
     print("add graph over")
