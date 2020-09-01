@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torch
 from torchvision import transforms as tfs
-from Model import FaceNet, Resnet18FaceModel
+from Model import QFaceNet, Resnet18FaceModel
 from LFWDataset import LFWDataset, DataPrefetcher, LFWPairedDataset
 import numpy as np
 import Config as cfg
@@ -98,11 +98,11 @@ def cal_distance(feature_a, feature_b):
 def test():
     batch_size = 1
     pairs_path = os.path.join(cfg.path, 'pairs.txt')
-    dataset = LFWPairedDataset(cfg.path,  pairs_path, transform=transform_for_infer(FaceNet.IMAGE_SHAPE))
+    dataset = LFWPairedDataset(cfg.path,  pairs_path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE))
     data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=1)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
-    model = FaceNet()
+    model = QFaceNet()
     state = torch.load(MODEL_FACE_ALIGN)
     model.load_state_dict(state['net'])
     model.to(device)

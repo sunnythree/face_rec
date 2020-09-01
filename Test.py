@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torch
 from torchvision import transforms as tfs
-from Model import FaceNet, Resnet18FaceModel
+from Model import QFaceNet, Resnet18FaceModel
 from LFWDataset import LFWDataset, DataPrefetcher
 import numpy as np
 import Config as cfg
@@ -23,11 +23,11 @@ def get_matches(targets, logits, n=1):
     return matches
 
 def test():
-    dataset = LFWDataset(cfg.path, transform=transform_for_infer(FaceNet.IMAGE_SHAPE), is_train=False)
+    dataset = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=False)
     data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=True, num_workers=1)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
-    model = FaceNet()
+    model = QFaceNet()
     state = torch.load(MODEL_FACE_ALIGN)
     model.load_state_dict(state['net'])
     model.to(device)
