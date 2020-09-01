@@ -8,7 +8,7 @@ import torch
 import os
 from utils import progress_bar
 from torchvision import transforms as tfs
-from Model import FaceNet, Resnet18FaceModel
+from Model import FaceNet, Resnet18FaceModel, QFaceNet
 from LFWDataset import LFWDataset, DataPrefetcher
 import PIL.ImageFont as ImageFont
 import numpy as np
@@ -39,7 +39,7 @@ def train(args):
     data_loader = DataLoader(dataset, batch_size=args.batch, shuffle=True, num_workers=16, drop_last=True)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
-    model = FaceNet()
+    model = QFaceNet()
     print("add graph")
     writer.add_graph(model, torch.zeros((1, 3, 96, 128)))
     print("add graph over")
