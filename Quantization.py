@@ -49,8 +49,10 @@ def test(model, data_loader, device, face_loss):
                   str(count) + "/" + str(all_count))
     print("Accuracy is : " + str(acc_count / all_count), "mean cost is : " + str(acc_count / all_count))
 def quant():
-    dataset = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=False)
-    data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=True, num_workers=1)
+    dataset_train = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=True)
+    data_loader_train = DataLoader(dataset=dataset_train, batch_size=1, shuffle=True, num_workers=1)
+    dataset_test = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=False)
+    data_loader_test = DataLoader(dataset=dataset_test, batch_size=1, shuffle=True, num_workers=1)
     device = torch.device("cpu")
     model = QFaceNet()
     state = torch.load(MODEL_FACE_ALIGN)
@@ -58,7 +60,7 @@ def quant():
     model.to(device)
     model.eval()
 
-    face_loss = FaceLoss(dataset.get_num_classes(), 512)
+    face_loss = FaceLoss(dataset_train.get_num_classes(), 512)
     face_loss.load_state_dict(state['loss'])
     face_loss.to(device)
     face_loss.eval()
@@ -74,7 +76,7 @@ def quant():
     print(model.qconfig)
     torch.quantization.prepare(model, inplace=True)
 
-    test(model, data_loader, device, face_loss)
+    test(model, data_loader_train, device, face_loss)
     # convert
     torch.quantization.convert(model, inplace=True)
 
@@ -83,7 +85,7 @@ def quant():
     torch.save(model.state_dict(), "data/qface.pt")
     torch.jit.save(torch.jit.script(model),  "data/android_qface.pt")
 
-    test(model, data_loader, device, face_loss)
+    test(model, data_loader_test, device, face_loss)
 
 
 

@@ -2,3 +2,6 @@
 __pycache__
 output
 log
+/Android/MyApplication/.gradle
+/Android/MyApplication/.idea
+/Android/MyApplication/app/build
