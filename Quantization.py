@@ -12,7 +12,7 @@ from Transform import transform_for_training, transform_for_infer
 import time
 import os
 
-MODEL_FACE_ALIGN  = "./output/face_rec.pt"
+MODEL_FACE_REC  = "./output/face_rec.pt"
 
 def print_size_of_model(model):
     torch.save(model.state_dict(), "temp.p")
@@ -49,18 +49,18 @@ def test(model, data_loader, device, face_loss):
                   str(count) + "/" + str(all_count))
     print("Accuracy is : " + str(acc_count / all_count), "mean cost is : " + str(acc_count / all_count))
 def quant():
-    dataset_train = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=True)
+    dataset_train = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=False)
     data_loader_train = DataLoader(dataset=dataset_train, batch_size=1, shuffle=True, num_workers=1)
     dataset_test = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=False)
     data_loader_test = DataLoader(dataset=dataset_test, batch_size=1, shuffle=True, num_workers=1)
     device = torch.device("cpu")
     model = QFaceNet()
-    state = torch.load(MODEL_FACE_ALIGN)
+    state = torch.load(MODEL_FACE_REC, map_location='cpu')
     model.load_state_dict(state['net'])
     model.to(device)
     model.eval()
 
-    face_loss = FaceLoss(dataset_train.get_num_classes(), 512)
+    face_loss = FaceLoss(dataset_train.get_num_classes(), model.FEATURE_DIM)
     face_loss.load_state_dict(state['loss'])
     face_loss.to(device)
     face_loss.eval()

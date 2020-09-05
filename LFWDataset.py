@@ -1,5 +1,8 @@
 import torch
 from torch.utils.data import Dataset
+
+from Model import FaceNet
+from Transform import transform_for_training
 from utils import image_loader
 import os
 import math

@@ -33,7 +33,7 @@ def test():
     model.to(device)
     model.eval()
 
-    face_loss = FaceLoss(dataset.get_num_classes(), 512)
+    face_loss = FaceLoss(dataset.get_num_classes(), model.FEATURE_DIM)
     face_loss.load_state_dict(state['loss'])
     face_loss.to(device)
     face_loss.eval()

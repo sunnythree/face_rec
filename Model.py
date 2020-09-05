@@ -110,17 +110,17 @@ class FaceNet(nn.Module):
 
 #模块化
 class ConvBNReLU(nn.Sequential):
-    def __init__(self, in_planes, out_planes, kernel_size=3, stride=1, groups=1):
-        padding = (kernel_size - 1) // 2
+    def __init__(self, in_planes, out_planes, kernel_size=3, stride=1, padding=1, groups=1):
         super(ConvBNReLU, self).__init__(
             nn.Conv2d(in_planes, out_planes, kernel_size, stride, padding, groups=groups, bias=False),
             nn.BatchNorm2d(out_planes, momentum=0.1),
-            nn.ReLU(inplace=False)
+            nn.ReLU(inplace=False),
+            nn.Dropout2d(0.2)
         )
 
 
 class QFaceNet(nn.Module):
-    IMAGE_SHAPE = (96, 128)
+    IMAGE_SHAPE = (224, 224)
     FEATURE_DIM = 512
 
     def __init__(self):
@@ -130,7 +130,8 @@ class QFaceNet(nn.Module):
         self.cnn3 = ConvBNReLU(64, 128)
         self.cnn4 = ConvBNReLU(128, 256)
         self.cnn5 = ConvBNReLU(256, 512)
-        self.cnn6 = nn.Conv2d(512, 512, kernel_size=1, padding=0)
+        self.cnn6 = ConvBNReLU(512, 512, padding=0)
+        self.cnn7 = nn.Conv2d(512, 512, kernel_size=1, padding=0)
         self.max_pool = nn.MaxPool2d(2, stride=2)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.quant = QuantStub()
@@ -138,19 +139,21 @@ class QFaceNet(nn.Module):
 
     def forward(self, x):
         x = self.quant(x)
-        x1 = self.cnn1(x)  # 96*128*32
-        x2 = self.max_pool(x1)  # 48*64*32
-        x3 = self.cnn2(x2)  # 48*64*64
-        x4 = self.max_pool(x3)  # 24*32*64
-        x5 = self.cnn3(x4)  # 24*32*128
-        x6 = self.max_pool(x5)  # 12*16*128
-        x7 = self.cnn4(x6)  # 10*14*256
-        x8 = self.max_pool(x7)  # 5*7*256
-        x9 = self.cnn5(x8)  # 3*5*512
-        x10 = self.avg_pool(x9)  # 1*1*512
-        x11 = self.cnn6(x10)  # 1*1*512
-        x11 = self.dequant(x11)
-        return x11.view(-1, 512)
+        x1 = self.cnn1(x)  # 224*224*32
+        x2 = self.max_pool(x1)  # 112*112*32
+        x3 = self.cnn2(x2)  # 112*112*64
+        x4 = self.max_pool(x3)  # 56*56*64
+        x5 = self.cnn3(x4)  # 56*56*128
+        x6 = self.max_pool(x5)  # 28*28*128
+        x7 = self.cnn4(x6)  # 28*28*256
+        x8 = self.max_pool(x7)  # 14*14*256
+        x9 = self.cnn5(x8)  # 14*14*512
+        x10 = self.max_pool(x9)  # 7*7*512
+        x11 = self.cnn6(x10)  # 5*5*512
+        x12 = self.avg_pool(x11)  # 1*1*512
+        x13 = self.cnn7(x12)  # 1*1*1024
+        x13 = self.dequant(x13)
+        return x13.view(-1, 512)
 
     def fuse_model(self):
         for m in self.modules():

@@ -35,15 +35,15 @@ def parse_args():
 
 def train(args):
     start_epoch = 0
-    dataset = LFWDataset(cfg.path, transform=transform_for_training(FaceNet.IMAGE_SHAPE))
+    dataset = LFWDataset(cfg.path, transform=transform_for_training(QFaceNet.IMAGE_SHAPE))
     data_loader = DataLoader(dataset, batch_size=args.batch, shuffle=True, num_workers=16, drop_last=True)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
     model = QFaceNet()
     print("add graph")
-    writer.add_graph(model, torch.zeros((1, 3, 96, 128)))
+    writer.add_graph(model, torch.zeros((1, 3, QFaceNet.IMAGE_SHAPE[0], QFaceNet.IMAGE_SHAPE[1])))
     print("add graph over")
-    face_loss = FaceLoss(dataset.get_num_classes(), 512)
+    face_loss = FaceLoss(dataset.get_num_classes(), model.FEATURE_DIM)
     if args.pretrained and os.path.exists(MODEL_SAVE_PATH):
         print("loading ...")
         state = torch.load(MODEL_SAVE_PATH)
