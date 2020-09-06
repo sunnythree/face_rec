@@ -191,15 +191,18 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
     }
 
 
-    private void convertFaceTo43(Camera.Face face){
+    private void convertFaceToSquare(Camera.Face face){
         int width = face.rect.right-face.rect.left;
         int height = face.rect.bottom - face.rect.top;
-        int toHeight = width*3/4;
-        int offset = (height - toHeight)/2;
+        int size = width > height?width:height;
+        int offsetH = (height - size)/2;
+        int offsetW = (width - size)/2;
         int padding = width/4;
         int paddingHeight = padding*3/4;
-        face.rect.top += offset;
-        face.rect.bottom -= offset;
+        face.rect.top += offsetH;
+        face.rect.bottom -= offsetH;
+        face.rect.left += offsetW;
+        face.rect.right -= offsetW;
         face.rect.top -= paddingHeight;
         face.rect.bottom += paddingHeight;
         face.rect.left -= padding;
@@ -224,7 +227,7 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
                     userName = userInfo.userName;
                 }
             }
-            Log.e("ttttt","distance: "+minDistance);
+            Log.e("ttttt","userName: "+userName + ",distance: "+minDistance);
             return new MatchWrap(minDistance, userName);
         }
         return null;
@@ -256,11 +259,11 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
     public void onPreviewFrame(byte[] bytes, Camera camera) {
         if(getFace.getAndSet(false)) {
             convertFaceIndex(curFace, 1280, 960);
-            convertFaceTo43(curFace);
+            convertFaceToSquare(curFace);
             Bitmap bitmap = fastYUV2RGB.convertYUVtoRGB(bytes, 1280, 960);
             Bitmap faceBitmap = BitmapUtils.cropFaceBitmap(bitmap, curFace);
             Bitmap rotateBitmap = BitmapUtils.rotateBitmap(faceBitmap, 270);
-            Bitmap stdFaceBitmap = BitmapUtils.scaleBitmap(rotateBitmap, 96, 128);
+            Bitmap stdFaceBitmap = BitmapUtils.scaleBitmap(rotateBitmap, 224, 224);
 
             float[] features = faceRec.forward(stdFaceBitmap);
             if (MainActivity.mode.get() == MainActivity.MODE_REGISTER){
@@ -269,6 +272,7 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
                     recFeatures.add(wrap);
                 }else {
                     float distance = Utils.euclideanDistance(features, recFeatures.get(0).features);
+                    Log.e("ttttt", "register distance: "+distance);
                     if (distance < FaceRec.DISTANCE_THRESHOLD){
                         float[] regFeatures;
                         if(recFeatures.get(0).score > curFace.score){

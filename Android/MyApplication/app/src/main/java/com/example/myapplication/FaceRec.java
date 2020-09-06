@@ -11,7 +11,7 @@ public class FaceRec {
     private Module faceRec = null;
     private float[] mean = new float[]{0.5f, 0.5f, 0.5f};
     private float[] std = new float[]{0.5f, 0.5f, 0.5f};
-    public static int DISTANCE_THRESHOLD = 230;
+    public static int DISTANCE_THRESHOLD = 150;
 
     public FaceRec(){
         faceRec = Module.load(Utils.assetFilePath(Utils.getApplication(), "android_qface.pt"));

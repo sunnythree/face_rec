@@ -13,7 +13,7 @@ import time
 import os
 from sklearn.model_selection import KFold
 
-MODEL_FACE_ALIGN  = "./output/face_rec.pt"
+MODEL_FACE_REC  = "./data/android_qface.pt"
 
 def generate_roc_curve(fpr, tpr, path):
     assert len(fpr) == len(tpr)
@@ -101,18 +101,18 @@ def test():
     dataset = LFWPairedDataset(cfg.path,  pairs_path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE))
     data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=1)
     use_cuda = torch.cuda.is_available()
-    device = torch.device("cuda:0" if use_cuda else "cpu")
-    model = QFaceNet()
-    state = torch.load(MODEL_FACE_ALIGN)
-    model.load_state_dict(state['net'])
+    device = torch.device("cpu")
+    # model = QFaceNet()
+    model = torch.jit.load(MODEL_FACE_REC)
+    # model.load_state_dict(state)
     model.to(device)
     model.eval()
 
 
     print("evaluating ...... ")
 
-    embedings_a = torch.zeros(len(dataset), model.FEATURE_DIM)
-    embedings_b = torch.zeros(len(dataset), model.FEATURE_DIM)
+    embedings_a = torch.zeros(len(dataset), 512)
+    embedings_b = torch.zeros(len(dataset), 512)
     matches = torch.zeros(len(dataset), dtype=torch.uint8)
 
     for iteration, (images_a, images_b, batched_matches) \
@@ -133,6 +133,7 @@ def test():
 
     thresholds = np.arange(0, 2000, 100)
     distances = cal_distance(embedings_a, embedings_b)
+    print(distances)
     tpr, fpr, accuracy, best_thresholds = compute_roc(
         distances,
         matches,
