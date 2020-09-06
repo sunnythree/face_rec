@@ -121,7 +121,7 @@ class ConvBNReLU(nn.Sequential):
 
 class QFaceNet(nn.Module):
     IMAGE_SHAPE = (224, 224)
-    FEATURE_DIM = 512
+    FEATURE_DIM = 1024
 
     def __init__(self):
         super(QFaceNet, self).__init__()
@@ -130,8 +130,8 @@ class QFaceNet(nn.Module):
         self.cnn3 = ConvBNReLU(64, 128)
         self.cnn4 = ConvBNReLU(128, 256)
         self.cnn5 = ConvBNReLU(256, 512)
-        self.cnn6 = ConvBNReLU(512, 512, padding=0)
-        self.cnn7 = nn.Conv2d(512, 512, kernel_size=1, padding=0)
+        self.cnn6 = ConvBNReLU(512, 1024, padding=0)
+        self.cnn7 = nn.Conv2d(1024, 1024, kernel_size=1, padding=0)
         self.max_pool = nn.MaxPool2d(2, stride=2)
         self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.quant = QuantStub()
@@ -152,8 +152,11 @@ class QFaceNet(nn.Module):
         x11 = self.cnn6(x10)  # 5*5*512
         x12 = self.avg_pool(x11)  # 1*1*512
         x13 = self.cnn7(x12)  # 1*1*1024
-        x13 = self.dequant(x13)
-        return x13.view(-1, 512)
+        feature_normed = x13.div(
+            torch.norm(x13, p=2, dim=1, keepdim=True).expand_as(x13))
+        feature_normed = self.dequant(feature_normed)
+
+        return feature_normed.view(-1, 1024)
 
     def fuse_model(self):
         for m in self.modules():

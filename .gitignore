@@ -5,3 +5,4 @@ log
 /Android/MyApplication/.gradle
 /Android/MyApplication/.idea
 /Android/MyApplication/app/build
+/Android/MyApplication/app/release

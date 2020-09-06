@@ -22,9 +22,6 @@ import androidx.annotation.NonNull;
 
 import com.google.gson.Gson;
 
-import org.json.JSONException;
-import org.json.JSONObject;
-import org.pytorch.torchvision.TensorImageUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -34,11 +31,13 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetectionListener {
     private FastYUV2RGB fastYUV2RGB = new FastYUV2RGB(Utils.getApplication());
     private FaceRec faceRec = new FaceRec();
-    private Camera.Face curFace = new Camera.Face();
+    public static Camera.Face curFace = new Camera.Face();
     private AtomicBoolean getFace = new AtomicBoolean(false);
     private ArrayList<FeaturesWrap> recFeatures = new ArrayList<>();
     private AtomicBoolean msgProcessed = new AtomicBoolean(true);
     private final int USER_EXIST = 3;
+    private final int DRAW_FACE = 4;
+    private final int CLEAN_FACE = 5;
     private static class FeaturesWrap{
         public FeaturesWrap(int score, float[] features){
             this.score = score;
@@ -149,6 +148,13 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
                     msgProcessed.set(true);
                     break;
                 }
+                case DRAW_FACE:{
+                    MainActivity.mFaceDraw.draw();
+                    break;
+                }
+                case CLEAN_FACE:{
+                    MainActivity.mFaceDraw.clear();
+                }
                 default:
                     break;
             }
@@ -184,9 +190,9 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
 
     private void convertFaceIndex(Camera.Face face, int width, int height){
         face.rect.left = (face.rect.left+1000)*width/2000;
-        face.rect.top = (face.rect.top+1000)*width/2000;
+        face.rect.top = (face.rect.top+1000)*height/2000;
         face.rect.right = (face.rect.right+1000)*width/2000;
-        face.rect.bottom = (face.rect.bottom+1000)*width/2000;
+        face.rect.bottom = (face.rect.bottom+1000)*height/2000;
         normalFace(face, width, height);
     }
 
@@ -195,16 +201,15 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
         int width = face.rect.right-face.rect.left;
         int height = face.rect.bottom - face.rect.top;
         int size = width > height?width:height;
-        int offsetH = (height - size)/2;
-        int offsetW = (width - size)/2;
-        int padding = width/4;
-        int paddingHeight = padding*3/4;
-        face.rect.top += offsetH;
-        face.rect.bottom -= offsetH;
-        face.rect.left += offsetW;
-        face.rect.right -= offsetW;
-        face.rect.top -= paddingHeight;
-        face.rect.bottom += paddingHeight;
+        int offsetH = (size - height)/2;
+        int offsetW = (size - width)/2;
+        int padding = 1/4*size;
+        face.rect.top -= offsetH;
+        face.rect.bottom += offsetH;
+        face.rect.left -= offsetW;
+        face.rect.right += offsetW;
+        face.rect.top -= padding;
+        face.rect.bottom += padding;
         face.rect.left -= padding;
         face.rect.right += padding;
         normalFace(face, 1280, 960);
@@ -251,15 +256,18 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
             curFace.rect.top = bestFace.rect.top;
             curFace.rect.right = bestFace.rect.right;
             curFace.rect.bottom = bestFace.rect.bottom;
+            convertFaceIndex(curFace, 1280, 960);
+            convertFaceToSquare(curFace);
+            handler.sendEmptyMessage(DRAW_FACE);
             getFace.set(true);
+        }else if (MainActivity.mode.get() == MainActivity.MODE_IDLE){
+            handler.sendEmptyMessage(CLEAN_FACE);
         }
     }
 
     @Override
     public void onPreviewFrame(byte[] bytes, Camera camera) {
         if(getFace.getAndSet(false)) {
-            convertFaceIndex(curFace, 1280, 960);
-            convertFaceToSquare(curFace);
             Bitmap bitmap = fastYUV2RGB.convertYUVtoRGB(bytes, 1280, 960);
             Bitmap faceBitmap = BitmapUtils.cropFaceBitmap(bitmap, curFace);
             Bitmap rotateBitmap = BitmapUtils.rotateBitmap(faceBitmap, 270);

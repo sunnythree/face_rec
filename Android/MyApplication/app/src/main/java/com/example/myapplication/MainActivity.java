@@ -17,6 +17,7 @@ import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -37,10 +38,18 @@ public class MainActivity extends AppCompatActivity implements  SurfaceHolder.Ca
     public static final int MODE_RECOGNIZATION = 2;
     public static AtomicInteger mode = new AtomicInteger(MODE_IDLE);
     public static Context context = null;
+    public static FaceDraw mFaceDraw = null;
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        LinearLayout.LayoutParams param = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        param.width = Utils.dip2px(MainActivity.this, 360);
+        param.height = Utils.dip2px(MainActivity.this, 480);
+        Log.e("ttttt", "w: "+param.width+",h: "+param.height);
+        mFaceDraw = new FaceDraw(MainActivity.this);
+        addContentView(mFaceDraw, param);
+
         context = this;
         surfaceView = findViewById(R.id.camera_sf);
         surfaceView.getHolder().addCallback(MainActivity.this);
@@ -97,6 +106,7 @@ public class MainActivity extends AppCompatActivity implements  SurfaceHolder.Ca
             SqliteDb.getInstance().close();
         }
         context = null;
+        mFaceDraw = null;
     }
 
     @Override
