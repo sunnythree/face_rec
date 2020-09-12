@@ -3,6 +3,7 @@ import android.app.AlertDialog;
 import android.content.Context;
 import android.content.DialogInterface;
 import android.graphics.Bitmap;
+import android.graphics.Point;
 import android.graphics.Rect;
 import android.hardware.Camera;
 import android.os.Bundle;
@@ -203,15 +204,15 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
         int size = width > height?width:height;
         int offsetH = (size - height)/2;
         int offsetW = (size - width)/2;
-        int padding = 1/4*size;
+        int padding = (int) (1/8.0*size);
         face.rect.top -= offsetH;
         face.rect.bottom += offsetH;
         face.rect.left -= offsetW;
         face.rect.right += offsetW;
         face.rect.top -= padding;
         face.rect.bottom += padding;
-        face.rect.left -= padding;
-        face.rect.right += padding;
+        face.rect.left -= 0;
+        face.rect.right += padding*2;
         normalFace(face, 1280, 960);
     }
 
@@ -227,12 +228,13 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
             for (SqliteDb.UserInfo userInfo : userInfos) {
                 float[] savedFeatures = new Gson().fromJson(userInfo.features, float[].class);
                 float distance = Utils.euclideanDistance(features, savedFeatures);
+                Log.e("ttttt","userName: "+userInfo.userName + ",distance: "+distance);
                 if (minDistance > distance) {
                     minDistance = distance;
                     userName = userInfo.userName;
                 }
             }
-            Log.e("ttttt","userName: "+userName + ",distance: "+minDistance);
+            Log.e("ttttt","best match: userName: "+userName + ",distance: "+minDistance);
             return new MatchWrap(minDistance, userName);
         }
         return null;
@@ -248,6 +250,9 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
             }
             int betIndex = getBestFace(faces);
             Camera.Face bestFace = faces[betIndex];
+            if (bestFace.score < 0.8){
+                return;
+            }
             curFace.score = bestFace.score;
             if(curFace.rect == null){
                 curFace.rect = new Rect();
@@ -271,7 +276,7 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
             Bitmap bitmap = fastYUV2RGB.convertYUVtoRGB(bytes, 1280, 960);
             Bitmap faceBitmap = BitmapUtils.cropFaceBitmap(bitmap, curFace);
             Bitmap rotateBitmap = BitmapUtils.rotateBitmap(faceBitmap, 270);
-            Bitmap stdFaceBitmap = BitmapUtils.scaleBitmap(rotateBitmap, 224, 224);
+            Bitmap stdFaceBitmap = BitmapUtils.scaleBitmap(rotateBitmap, 112, 112);
 
             float[] features = faceRec.forward(stdFaceBitmap);
             if (MainActivity.mode.get() == MainActivity.MODE_REGISTER){
@@ -289,7 +294,7 @@ public class CameraCallBack implements Camera.PreviewCallback, Camera.FaceDetect
                             regFeatures = features;
                         }
                         MatchWrap matchWrap = getBestMatchUser(regFeatures);
-                        if (matchWrap != null && matchWrap.distance < FaceRec.DISTANCE_THRESHOLD){
+                        if (matchWrap != null && matchWrap.distance < FaceRec.DISTANCE_REC_THRESHOLD){
                             if (msgProcessed.getAndSet(false)) {
                                 Message msg = new Message();
                                 Bundle bundle = new Bundle();

@@ -1,16 +1,11 @@
 import torch
 from torch.utils.data import Dataset
 
-from Model import FaceNet
-from Transform import transform_for_training
 from utils import image_loader
 import os
 import math
 import Config as cfg
 import cv2
-import numpy as np
-from torchvision import transforms
-
 def create_datasets(dataroot, train_val_split=0.9, is_train=True):
     if not os.path.isdir(dataroot):
         print("no dataset error")

@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torch
 from torchvision import transforms as tfs
-from Model import QFaceNet, Resnet18FaceModel
+from Model import QFaceNet
 from LFWDataset import LFWDataset, DataPrefetcher
 import numpy as np
 import Config as cfg
@@ -24,7 +24,8 @@ def get_matches(targets, logits, n=1):
 
 def test():
     dataset = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=False)
-    data_loader = DataLoader(dataset=dataset, batch_size=1, shuffle=True, num_workers=1)
+    batch = 10
+    data_loader = DataLoader(dataset=dataset, batch_size=batch, shuffle=True, num_workers=16)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
     model = QFaceNet()
@@ -50,14 +51,18 @@ def test():
         end = time.time()
         cost = (end - start)
         all_cost += cost
-        _, _, _, logits = face_loss(output, targets.to(device))
+        _, _, loss, logits = face_loss(output, targets.to(device))
         matches = get_matches(targets, logits, n=1)
-        if matches == 1:
-            acc_count += 1
-        count += 1
+        if matches > 0:
+            acc_count += matches
+        count += batch
         if count % 100 == 0:
-            print("Current accuracy is "+str(acc_count/count), "current mean cost is "+str(all_cost/count), str(count)+"/"+str(all_count))
-    print("Accuracy is : "+str(acc_count/all_count), "mean cost is : "+str(acc_count/all_count))
+            print("Current accuracy is "
+                  +str(acc_count/count), "current mean cost is "
+                  +str(all_cost/count), str(count)+"/"+str(all_count)+", loss: "
+                  +str(loss.item()))
+    print("Accuracy is : "+str(acc_count/all_count),
+          "mean cost is : "+str(all_cost/all_count))
 
 
 if __name__ == '__main__':

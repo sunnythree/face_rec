@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torch
 from torchvision import transforms as tfs
-from Model import QFaceNet, Resnet18FaceModel
+from Model import QFaceNet
 from LFWDataset import LFWDataset, DataPrefetcher
 import numpy as np
 import Config as cfg
@@ -32,7 +32,6 @@ def test(model, data_loader, device, face_loss):
     all_cost = 0
     count = 0
     print("testing ...... ")
-
     for imgs, targets, names in data_loader:
         start = time.time()
         output = model(imgs.to(device))
@@ -47,7 +46,10 @@ def test(model, data_loader, device, face_loss):
         if count % 100 == 0:
             print("Current accuracy is " + str(acc_count / count), "current mean cost is " + str(all_cost / count),
                   str(count) + "/" + str(all_count))
-    print("Accuracy is : " + str(acc_count / all_count), "mean cost is : " + str(acc_count / all_count))
+        if count > 1000:
+            break
+    print("Accuracy is : " + str(acc_count / all_count), "mean cost is : " + str(acc_count / count))
+
 def quant():
     dataset_train = LFWDataset(cfg.path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE), is_train=False)
     data_loader_train = DataLoader(dataset=dataset_train, batch_size=1, shuffle=True, num_workers=1)
@@ -59,6 +61,8 @@ def quant():
     model.load_state_dict(state['net'])
     model.to(device)
     model.eval()
+
+    torch.jit.save(torch.jit.script(model), "data/qface.pt")
 
     face_loss = FaceLoss(dataset_train.get_num_classes(), model.FEATURE_DIM)
     face_loss.load_state_dict(state['loss'])
@@ -82,7 +86,6 @@ def quant():
 
     print_size_of_model(model)
     print(model)
-    torch.save(model.state_dict(), "data/qface.pt")
     torch.jit.save(torch.jit.script(model),  "data/android_qface.pt")
 
     test(model, data_loader_test, device, face_loss)

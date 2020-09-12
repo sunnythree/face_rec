@@ -3,7 +3,7 @@ from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torch
 from torchvision import transforms as tfs
-from Model import QFaceNet, Resnet18FaceModel
+from Model import QFaceNet
 from LFWDataset import LFWDataset, DataPrefetcher, LFWPairedDataset
 import numpy as np
 import Config as cfg
@@ -94,12 +94,15 @@ def cal_distance(feature_a, feature_b):
     distances = torch.sum(torch.pow(feature_a - feature_b, 2), dim=1)
     return distances
 
+def cos_distance(feature_a, feature_b):
+    distance = torch.sum(feature_a.mul(feature_b), dim=1)
+    return distance
 
 def test():
     batch_size = 1
     pairs_path = os.path.join(cfg.path, 'pairs.txt')
     dataset = LFWPairedDataset(cfg.path,  pairs_path, transform=transform_for_infer(QFaceNet.IMAGE_SHAPE))
-    data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=1)
+    data_loader = DataLoader(dataset=dataset, batch_size=batch_size, shuffle=True, num_workers=10)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
     model = QFaceNet()
@@ -124,15 +127,22 @@ def test():
         feature_a = model(images_a)
         feature_b = model(images_b)
 
+        norm_feature_a = feature_a.div(
+            torch.norm(feature_a, p=2, dim=1, keepdim=True).expand_as(feature_a))
+
+        norm_feature_b = feature_b.div(
+            torch.norm(feature_b, p=2, dim=1, keepdim=True).expand_as(feature_b))
+
         start =  batch_size * iteration
         end = start + current_batch_size
 
-        embedings_a[start:end, :] = feature_a.data
-        embedings_b[start:end, :] = feature_b.data
+        embedings_a[start:end, :] = norm_feature_a.data
+        embedings_b[start:end, :] = norm_feature_b.data
         matches[start:end] = batched_matches.data
 
-    thresholds = np.arange(0, 2000, 100)
+    thresholds = np.arange(0, 4, 0.1)
     distances = cal_distance(embedings_a, embedings_b)
+    print(distances.size())
     print(distances)
     tpr, fpr, accuracy, best_thresholds = compute_roc(
         distances,

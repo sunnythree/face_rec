@@ -1,17 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torchvision.models import resnet18, resnet50
-from torch.quantization import QuantStub, DeQuantStub
-
-class Mish(nn.Module):
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        x = x * (torch.tanh(F.softplus(x)))
-        return x
-
+from torchvision.models.resnet import Bottleneck, BasicBlock, ResNet
+from torch.quantization import QuantStub, DeQuantStub, fuse_modules
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     """3x3 convolution with padding"""
@@ -23,183 +13,190 @@ def conv1x1(in_planes, out_planes, stride=1):
     """1x1 convolution"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
-
-class BasicBlock(nn.Module):
-    def __init__(self, inplanes, planes, stride=1, downsample=None, groups=1,
-                 base_width=64, dilation=1, norm_layer=None):
-        super(BasicBlock, self).__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        if groups != 1 or base_width != 64:
-            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
-        if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
-        # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = norm_layer(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = norm_layer(planes)
-        self.stride = stride
-        # 如果不相同，需要添加卷积+BN来变换为同一维度
-        if stride != 1 or inplanes != planes:
-            self.shortcut = nn.Sequential(
-                nn.Conv2d(inplanes, planes,
-                          kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(planes)
-            )
+class QuantizableBasicBlock(BasicBlock):
+    def __init__(self, *args, **kwargs):
+        super(QuantizableBasicBlock, self).__init__(*args, **kwargs)
+        self.add_relu = torch.nn.quantized.FloatFunctional()
 
     def forward(self, x):
         identity = x
+
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
 
         out = self.conv2(out)
         out = self.bn2(out)
-        out += self.shortcut(x)
-        out = self.relu(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+
+        out = self.add_relu.add_relu(out, identity)
 
         return out
 
-class CnnBlock(nn.Module):
+    def fuse_model(self):
+        torch.quantization.fuse_modules(self, [['conv1', 'bn1', 'relu'],
+                                               ['conv2', 'bn2']], inplace=True)
+        if self.downsample:
+            torch.quantization.fuse_modules(self.downsample, ['0', '1'], inplace=True)
 
-    def __init__(self, inplanes, planes, kernel_size=3, stride=1, padding=1):
-        super(CnnBlock, self).__init__()
-        self.conv = nn.Conv2d(inplanes, planes, kernel_size=kernel_size, stride=stride, bias=False, padding=padding)
-        self.bn = nn.BatchNorm2d(planes)
-        self.mish = Mish()
+
+class QuantizableBottleneck(Bottleneck):
+    def __init__(self, *args, **kwargs):
+        super(QuantizableBottleneck, self).__init__(*args, **kwargs)
+        self.skip_add_relu = nn.quantized.FloatFunctional()
+        self.relu1 = nn.ReLU(inplace=False)
+        self.relu2 = nn.ReLU(inplace=False)
 
     def forward(self, x):
-        out = self.conv(x)
-        out = self.bn(out)
-        out = self.mish(out)
-        out = F.dropout(out, 0.1)
+        identity = x
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu1(out)
+        out = self.conv2(out)
+        out = self.bn2(out)
+        out = self.relu2(out)
+
+        out = self.conv3(out)
+        out = self.bn3(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(x)
+        out = self.skip_add_relu.add_relu(out, identity)
+
         return out
 
+    def fuse_model(self):
+        fuse_modules(self, [['conv1', 'bn1', 'relu1'],
+                            ['conv2', 'bn2', 'relu2'],
+                            ['conv3', 'bn3']], inplace=True)
+        if self.downsample:
+            torch.quantization.fuse_modules(self.downsample, ['0', '1'], inplace=True)
 
-class FaceNet(nn.Module):
-    IMAGE_SHAPE = (96, 128)
-    FEATURE_DIM = 512
 
-    def __init__(self):
-        super(FaceNet, self).__init__()
-        self.cnn1 = CnnBlock(3, 32)
-        self.cnn2 = BasicBlock(32, 64)
-        self.cnn3 = BasicBlock(64, 128)
-        self.cnn4 = BasicBlock(128, 256)
-        self.cnn5 = BasicBlock(256, 512)
-        self.cnn6 = nn.Conv2d(512, 512, kernel_size=1, padding=0)
-        self.max_pool = nn.MaxPool2d(2, stride=2)
-        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+class ResNet(nn.Module):
+
+    def __init__(self, block, layers, zero_init_residual=False,
+                 groups=1, width_per_group=64, replace_stride_with_dilation=None,
+                 norm_layer=None):
+        super(ResNet, self).__init__()
+        if norm_layer is None:
+            norm_layer = nn.BatchNorm2d
+        self._norm_layer = norm_layer
+
+        self.inplanes = 64
+        self.dilation = 1
+        if replace_stride_with_dilation is None:
+            # each element in the tuple indicates if we should replace
+            # the 2x2 stride with a dilated convolution instead
+            replace_stride_with_dilation = [False, False, False]
+        if len(replace_stride_with_dilation) != 3:
+            raise ValueError("replace_stride_with_dilation should be None "
+                             "or a 3-element tuple, got {}".format(replace_stride_with_dilation))
+        self.groups = groups
+        self.base_width = width_per_group
+        self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3,
+                               bias=False)
+        self.bn1 = norm_layer(self.inplanes)
+        self.relu = nn.ReLU(inplace=True)
+        self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+        self.layer1 = self._make_layer(block, 64, layers[0])
+        self.layer2 = self._make_layer(block, 128, layers[1], stride=2,
+                                       dilate=replace_stride_with_dilation[0])
+        self.layer3 = self._make_layer(block, 256, layers[2], stride=2,
+                                       dilate=replace_stride_with_dilation[1])
+        self.layer4 = self._make_layer(block, 512, layers[3], stride=2,
+                                       dilate=replace_stride_with_dilation[2])
+        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
+
+        # Zero-initialize the last BN in each residual branch,
+        # so that the residual branch starts with zeros, and each residual block behaves like an identity.
+        # This improves the model by 0.2~0.3% according to https://arxiv.org/abs/1706.02677
+        if zero_init_residual:
+            for m in self.modules():
+                if isinstance(m, Bottleneck):
+                    nn.init.constant_(m.bn3.weight, 0)
+                elif isinstance(m, BasicBlock):
+                    nn.init.constant_(m.bn2.weight, 0)
+
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+        norm_layer = self._norm_layer
+        downsample = None
+        previous_dilation = self.dilation
+        if dilate:
+            self.dilation *= stride
+            stride = 1
+        if stride != 1 or self.inplanes != planes * block.expansion:
+            downsample = nn.Sequential(
+                conv1x1(self.inplanes, planes * block.expansion, stride),
+                norm_layer(planes * block.expansion),
+            )
+
+        layers = []
+        layers.append(block(self.inplanes, planes, stride, downsample, self.groups,
+                            self.base_width, previous_dilation, norm_layer))
+        self.inplanes = planes * block.expansion
+        for _ in range(1, blocks):
+            layers.append(block(self.inplanes, planes, groups=self.groups,
+                                base_width=self.base_width, dilation=self.dilation,
+                                norm_layer=norm_layer))
+
+        return nn.Sequential(*layers)
+
+    def _forward_impl(self, x):
+        # See note [TorchScript super()]
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
+
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
+
+        x = self.avgpool(x)
+        x = torch.flatten(x, 1)
+        return x
 
     def forward(self, x):
-        x1 = self.cnn1(x)  # 96*128*32
-        x2 = self.max_pool(x1)  # 48*64*32
-        x3 = self.cnn2(x2)  # 48*64*64
-        x4 = self.max_pool(x3)  # 24*32*64
-        x5 = self.cnn3(x4)  # 24*32*128
-        x6 = self.max_pool(x5)  # 12*16*128
-        x7 = self.cnn4(x6)  # 10*14*256
-        x8 = self.max_pool(x7)  # 5*7*256
-        x9 = self.cnn5(x8)  # 3*5*512
-        x10 = self.avg_pool(x9)  # 1*1*512
-        x11 = self.cnn6(x10)  # 1*1*512
-        return x11.view(-1, 512)
-
-
-#模块化
-class ConvBNReLU(nn.Sequential):
-    def __init__(self, in_planes, out_planes, kernel_size=3, stride=1, padding=1, groups=1):
-        super(ConvBNReLU, self).__init__(
-            nn.Conv2d(in_planes, out_planes, kernel_size, stride, padding, groups=groups, bias=False),
-            nn.BatchNorm2d(out_planes, momentum=0.1),
-            nn.ReLU(inplace=False),
-            nn.Dropout2d(0.2)
-        )
+        return self._forward_impl(x)
 
 
 class QFaceNet(nn.Module):
-    IMAGE_SHAPE = (224, 224)
-    FEATURE_DIM = 1024
+    IMAGE_SHAPE = (112, 112)
+    FEATURE_DIM = 512
 
     def __init__(self):
         super(QFaceNet, self).__init__()
-        self.cnn1 = ConvBNReLU(3, 32)
-        self.cnn2 = ConvBNReLU(32, 64)
-        self.cnn3 = ConvBNReLU(64, 128)
-        self.cnn4 = ConvBNReLU(128, 256)
-        self.cnn5 = ConvBNReLU(256, 512)
-        self.cnn6 = ConvBNReLU(512, 1024, padding=0)
-        self.cnn7 = nn.Conv2d(1024, 1024, kernel_size=1, padding=0)
-        self.max_pool = nn.MaxPool2d(2, stride=2)
-        self.avg_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.feature = ResNet(QuantizableBasicBlock, [2, 2, 2, 2])
         self.quant = QuantStub()
         self.dequant = DeQuantStub()
 
     def forward(self, x):
         x = self.quant(x)
-        x1 = self.cnn1(x)  # 224*224*32
-        x2 = self.max_pool(x1)  # 112*112*32
-        x3 = self.cnn2(x2)  # 112*112*64
-        x4 = self.max_pool(x3)  # 56*56*64
-        x5 = self.cnn3(x4)  # 56*56*128
-        x6 = self.max_pool(x5)  # 28*28*128
-        x7 = self.cnn4(x6)  # 28*28*256
-        x8 = self.max_pool(x7)  # 14*14*256
-        x9 = self.cnn5(x8)  # 14*14*512
-        x10 = self.max_pool(x9)  # 7*7*512
-        x11 = self.cnn6(x10)  # 5*5*512
-        x12 = self.avg_pool(x11)  # 1*1*512
-        x13 = self.cnn7(x12)  # 1*1*1024
-        feature_normed = x13.div(
-            torch.norm(x13, p=2, dim=1, keepdim=True).expand_as(x13))
-        feature_normed = self.dequant(feature_normed)
-
-        return feature_normed.view(-1, 1024)
+        x = self.feature(x)
+        x = self.dequant(x)
+        return x
 
     def fuse_model(self):
+        fuse_modules(self.feature, ['conv1', 'bn1', 'relu'], inplace=True)
         for m in self.modules():
-            if type(m) == ConvBNReLU:
-                torch.quantization.fuse_modules(m, ['0', '1', '2'], inplace=True)
+            if type(m) == QuantizableBottleneck or type(m) == QuantizableBasicBlock:
+                m.fuse_model()
 
-class ResnetFaceModel(nn.Module):
-
-    IMAGE_SHAPE = (96, 128)
-
-    def __init__(self, feature_dim):
-        super().__init__()
-        self.feature_dim = feature_dim
-        self.extract_feature = nn.Linear(
-            self.feature_dim*4*3, self.feature_dim)
-
-    def forward(self, x):
-        x = self.base.conv1(x)
-        x = self.base.bn1(x)
-        x = self.base.relu(x)
-        x = self.base.maxpool(x)
-        x = self.base.layer1(x)
-        x = self.base.layer2(x)
-        x = self.base.layer3(x)
-        x = self.base.layer4(x)
-        x = x.view(x.size(0), -1)
-        feature = self.extract_feature(x)
-        feature_normed = feature.div(
-            torch.norm(feature, p=2, dim=1, keepdim=True).expand_as(feature))
-
-        return feature_normed
-
-class Resnet18FaceModel(ResnetFaceModel):
-
-    FEATURE_DIM = 512
-
-    def __init__(self):
-        super().__init__(self.FEATURE_DIM)
-        self.base = resnet18(pretrained=False)
 
 def test_model():
-    net = Resnet18FaceModel()
-    x = torch.randn(2, 3, 96, 128)
+    net = QFaceNet()
+    x = torch.randn(2, 3, net.IMAGE_SHAPE[0], net.IMAGE_SHAPE[1])
     y = net(x)
     print(y.size())
 

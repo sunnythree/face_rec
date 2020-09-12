@@ -11,7 +11,9 @@ class CenterLoss(nn.Module):
 
     def forward(self, features, targets):
         target_centers = self.centers[targets]
-        center_loss = nn.functional.mse_loss(features, target_centers, reduction='mean')
+        feature_normed = features.div(
+            torch.norm(features, p=2, dim=1, keepdim=True).expand_as(features))
+        center_loss = nn.functional.mse_loss(feature_normed, target_centers, reduction='mean')
         return center_loss
 
 
@@ -39,4 +41,5 @@ class FaceLoss(nn.Module):
     def forward(self, features, targets):
         c_loss = self.center_loss(features, targets)
         s_loss, logits = self.softmax_loss(features, targets)
-        return c_loss, s_loss, s_loss + self.alpha * c_loss, logits
+        loss = s_loss + c_loss*self.alpha
+        return c_loss, s_loss, loss, logits
